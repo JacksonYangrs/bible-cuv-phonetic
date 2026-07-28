@@ -238,18 +238,23 @@ function hanCount(s){ let n=0; for(const c of s){ const cc=c.charCodeAt(0); if(c
 function recomputePages(){
   pages=[]; pageLabel=[];
   chapterToPage=[]; books.forEach((bk,bi)=>{ chapterToPage[bi]=[]; bk.cs.forEach((c,ci)=> chapterToPage[bi][ci]=null); });
-  const TARGET = useSpread()? 360 : 560;       // 每頁估算中文字數（保守值，避免溢出留白）
-  let cur=[], cnt=0, lb=curMode==='s'?books[0].ts:books[0].t, lc='';
+  /* 雙約束分頁：純字數估算會低估 ruby 注音 + 行間距 + 標題佔用的實際高度，
+     一旦單頁塞過量，CSS overflow:hidden 會把超出節「剪掉」(看起來像「過頁」)。
+     解法：同時限制「估算字數」與「節數」硬上限，保證不溢出。 */
+  const spread = useSpread();
+  const TARGET = spread? 220 : 380;     // 保守字數（給 ruby/標點/編號留空間）
+  const MAX_V  = spread? 7  : 12;       // 節數硬上限（避免長 ruby 經文塞不下）
+  let cur=[], cnt=0, vs=0, lb=curMode==='s'?books[0].ts:books[0].t, lc='';
   flow.forEach((b)=>{
     if(b.k==='book'||b.k==='chap'){
-      if(cur.length){ pages.push(cur); cur=[]; cnt=0; }
+      if(cur.length){ pages.push(cur); cur=[]; cnt=0; vs=0; }
       cur=[b];
       if(b.k==='book'){ lb=curMode==='s'?books[b.bi].ts:books[b.bi].t; lc=''; }
       else { lc=num2zh(b.ci+1)+'章'; }
     } else {
       const w=hanCount(curMode==='s'? b.h_s : b.h_t);
-      if(cur.length && cnt+w>TARGET){ pages.push(cur); cur=[]; cnt=0; }
-      cur.push(b); cnt+=w;
+      if(cur.length && (cnt+w>TARGET || vs>=MAX_V)){ pages.push(cur); cur=[]; cnt=0; vs=0; }
+      cur.push(b); cnt+=w; vs++;
     }
   });
   if(cur.length) pages.push(cur);
