@@ -232,74 +232,33 @@ function makeEl(b){
   const h = curMode==='s'? b.h_s : b.h_t;
   e.innerHTML='<sup class="vn">'+(b.vi+1)+'</sup>'+applyRuby(h, curMode); return e;
 }
-function metrics(){ const m=document.getElementById('measurer'); pageW=m.clientWidth; pageH=m.clientHeight; }
-
-/* 增量 / 按需分頁：只排到 pagTarget 指定的 flow 下標，其餘在後台靜默續排，
-   避免啟動時一次性排完全本（數千頁）導致長時間卡頓。 */
-function resetPagination(){
-  pagTok++;                                  // 取消任何進行中的分頁任務
-  pagJob=null; pagTarget=0; pcIdx=0; pages=[]; pageLabel=[];
-  lastBook=curMode==='s'?books[0].ts:books[0].t; lastChap='';
-  books.forEach((bk,bi)=>{ chapterToPage[bi]=[]; bk.cs.forEach((c,ci)=> chapterToPage[bi][ci]=null); });
-}
-function recordPage(picked){
-  picked.forEach(b=>{ if(b.k==='book') lastBook=curMode==='s'?books[b.bi].ts:books[b.bi].t;
-                      if(b.k==='chap') lastChap=num2zh(b.ci+1)+'章'; });
-  pageLabel.push(lastBook+' '+lastChap);
-  picked.forEach(b=>{ if(b.k==='chap' && chapterToPage[b.bi][b.ci]===null) chapterToPage[b.bi][b.ci]=pages.length; });
-  pages.push(picked);
-}
-/* 同步排一批（最多 batch 頁），從 pcIdx 推進到 target；由單一遊標串行，避免並發搶 measurer */
-function fillBatch(target, batch){
-  const my=pagTok; const m=document.getElementById('measurer');
-  let cnt=0;
-  while(pcIdx<target && pcIdx<flow.length && cnt<batch){
-    if(my!==pagTok) break;                   // 被 reset / 新需求取消
-    m.innerHTML='';
-    const picked=[];
-    while(pcIdx<flow.length){
-      m.appendChild(makeEl(flow[pcIdx]));
-      if(m.scrollHeight>pageH && picked.length>0) break;   // 本塊溢出 -> 留給下一頁
-      picked.push(flow[pcIdx]); pcIdx++;
+/* 純字數估算分頁（不測 DOM），瞬間完成數千頁切分；跳章/翻頁皆為 O(1) 直接定位，
+   徹底消除「從頭順序排到目標章」導致的數分鐘等待。 */
+function hanCount(s){ let n=0; for(const c of s){ const cc=c.charCodeAt(0); if(cc>=0x4e00&&cc<=0x9fff) n++; } return n; }
+function recomputePages(){
+  pages=[]; pageLabel=[];
+  chapterToPage=[]; books.forEach((bk,bi)=>{ chapterToPage[bi]=[]; bk.cs.forEach((c,ci)=> chapterToPage[bi][ci]=null); });
+  const TARGET = useSpread()? 360 : 560;       // 每頁估算中文字數（保守值，避免溢出留白）
+  let cur=[], cnt=0, lb=curMode==='s'?books[0].ts:books[0].t, lc='';
+  flow.forEach((b)=>{
+    if(b.k==='book'||b.k==='chap'){
+      if(cur.length){ pages.push(cur); cur=[]; cnt=0; }
+      cur=[b];
+      if(b.k==='book'){ lb=curMode==='s'?books[b.bi].ts:books[b.bi].t; lc=''; }
+      else { lc=num2zh(b.ci+1)+'章'; }
+    } else {
+      const w=hanCount(curMode==='s'? b.h_s : b.h_t);
+      if(cur.length && cnt+w>TARGET){ pages.push(cur); cur=[]; cnt=0; }
+      cur.push(b); cnt+=w;
     }
-    if(picked.length===0 && pcIdx<flow.length){ picked.push(flow[pcIdx]); pcIdx++; }  // 單塊超頁強放
-    // 末位若是 書/章 標題 -> 退還給下一頁開頭，避免落在頁底
-    while(picked.length>1 && (picked[picked.length-1].k==='book'||picked[picked.length-1].k==='chap')){ picked.pop(); pcIdx--; }
-    recordPage(picked); cnt++;
-  }
+  });
+  if(cur.length) pages.push(cur);
+  pages.forEach((pg,pi)=>{
+    pg.forEach(b=>{ if(b.k==='book'){ lb=curMode==='s'?books[b.bi].ts:books[b.bi].t; lc=''; }
+                    if(b.k==='chap'){ lc=num2zh(b.ci+1)+'章'; chapterToPage[b.bi][b.ci]=pi; } });
+    pageLabel.push(lb+' '+lc);
+  });
 }
-async function paginateTo(target){
-  target=Math.max(target,0);
-  pagTarget=Math.max(pagTarget, target, pcIdx);   // 取最大需求，單一遊標順序推進
-  if(pagJob) return pagJob;                     // 已有任務在跑，復用
-  const my=++pagTok;
-  pagJob=(async()=>{
-    paginating=true;
-    while(pcIdx<pagTarget && pcIdx<flow.length){
-      if(my!==pagTok) break;                    // 被 reset / 新需求取消
-      fillBatch(pagTarget, 6);
-      await new Promise(r=>setTimeout(r,0));     // 每批讓出主線程
-    }
-    paginating=false;
-    if(my===pagTok) pagJob=null;                 // 僅正常結束釋放，避免覆蓋新任務
-    if(pages.length && my===pagTok) render();    // 刷新頁碼 / 排版狀態
-  })();
-  return pagJob;
-}
-/* 確保第 p 個版面（1-based，封面為 0）所需頁已排好：只提升目標，輪詢 pages 增長，不阻塞等全本 */
-async function ensureReady(p){
-  if(p<=0) return;
-  const spread=useSpread();
-  const est=pcIdx + (spread? (p-1)*2 : (p-1)) + (spread?120:60);
-  paginateTo(est);
-  for(let g=0; g<4000; g++){
-    const have=spread? Math.ceil(pages.length/2): pages.length;
-    if(have>=p || pcIdx>=flow.length) break;
-    await new Promise(r=>setTimeout(r,0));
-  }
-}
-/* 後台把全本排完，使任意章節都能即時跳轉 */
-function prefetch(){ if(pcIdx<flow.length) paginateTo(flow.length); }
 
 function pageEl(blocks, side){
   const d=document.createElement('div'); d.className='page '+side;
@@ -328,20 +287,15 @@ function render(){
   }
   const u=U(); const total = spread? (1+Math.ceil(pages.length/2)) : (1+pages.length);
   const label = spread? u.spread : u.page;
-  const building = paginating && pcIdx<flow.length;
-  document.getElementById('pginfo').textContent='第 '+pos+' / '+total+' '+label + (building? ' · 排版中…':'');
+  document.getElementById('pginfo').textContent='第 '+pos+' / '+total+' '+label;
   let lab='';
   if(!spread){ if(pos>0){ const pg=pages[pos-1]; if(pg&&pg.length) lab=pageLabel[pages.indexOf(pg)]; } }
   else { const pi=(pos-1)*2; const pg=pages[pi]||pages[pi+1]; if(pg&&pg.length) lab=pageLabel[pages.indexOf(pg)]; }
   document.getElementById('info').textContent=lab;
 }
 function maxPos(){ return useSpread()? (1+Math.ceil(pages.length/2)) : (1+pages.length); }
-let goTok=0;
-async function go(n){
-  const my=++goTok;
-  await ensureReady(n);                       // 按需續排到目標頁
-  if(my!==goTok) return;                      // 有更新的翻頁請求，放棄本次
-  pos=Math.max(0,Math.min(maxPos(),n)); render(); prefetch();
+function go(n){
+  pos=Math.max(0,Math.min(maxPos(),n)); render();
 }
 
 function currentAnchor(){
@@ -351,18 +305,11 @@ function currentAnchor(){
   return null;
 }
 function posForBlock(blk){ for(let i=0;i<pages.length;i++) if(pages[i].includes(blk)) return i; return 0; }
-async function repaginateKeep(){
+function repaginateKeep(){
   const a=currentAnchor();
-  resetPagination();
-  if(a){
-    const start=chapterFlowStart[a.bi][a.ci];
-    const verses=books[a.bi].cs[a.ci].length;
-    await paginateTo(start+verses+8);          // 先排到當前章，立即可讀（不全排）
-    const pi=posForBlock(a); pos = useSpread()? 1+Math.floor(pi/2) : pi+1;
-  } else {
-    await paginateTo(60);
-  }
-  render(); prefetch();                         // 後台靜默排全本
+  recomputePages();                            // 瞬間重排（不測 DOM）
+  if(a){ const pi=posForBlock(a); pos = useSpread()? 1+Math.floor(pi/2) : pi+1; }
+  render();
 }
 
 /* 目錄 */
@@ -385,18 +332,11 @@ function buildTOC(){
     }
   });
 }
-async function jumpTo(bi,ci){
+function jumpTo(bi,ci){
   closeTOC();
-  const start=chapterFlowStart[bi][ci];
-  const verses=books[bi].cs[ci].length;
-  paginateTo(start+verses+8);                  // 提升目標，後台排到該章
-  for(let g=0; g<4000; g++){                   // 輪詢該章索引建立，不阻塞等全本
-    if(chapterToPage[bi][ci]!==null || pcIdx>=flow.length) break;
-    await new Promise(r=>setTimeout(r,0));
-  }
   const pi=chapterToPage[bi][ci];
-  if(pi==null){ toast('排版中，請稍候…'); return; }
-  pos = useSpread()? 1+Math.floor(pi/2) : pi+1; render(); prefetch();
+  if(pi==null) return;
+  pos = useSpread()? 1+Math.floor(pi/2) : pi+1; render();
 }
 
 function openTOC(){ document.getElementById('toc').classList.add('show'); }
@@ -526,18 +466,16 @@ function bind(){
   st.addEventListener('touchend',(e)=>{ const dx=e.changedTouches[0].clientX-sx;
     if(Math.abs(dx)>50){ dx<0?go(pos+1):go(pos-1); } },{passive:true});
   let rz=null; window.addEventListener('resize',()=>{ clearTimeout(rz); rz=setTimeout(()=>{
-    metrics(); repaginateKeep(); },250); });
+    repaginateKeep(); },200); });
 }
 async function init(){
-  buildFlow(); metrics();
+  buildFlow();
   curMode = simpMode? 's':'t'; setLang(); setLayoutBtns();
   document.getElementById('verbtn').classList.toggle('on', simpMode);
   setKnownBtn(); buildTOC(); bind();
-  render();                                   // 封面先出，不依賴 pages
-  document.getElementById('loading').style.display='none';
-  await paginateTo(80);                        // 首屏：只排前數章，立即可讀（不排全本）
+  recomputePages();                            // 瞬間切分全本，不測 DOM
   render();
-  prefetch();                                  // 後台靜默排全本，不阻塞
+  document.getElementById('loading').style.display='none';
 }
 if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
 else init();
