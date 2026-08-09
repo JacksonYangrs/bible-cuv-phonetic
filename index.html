@@ -7,6 +7,17 @@
     <title>聖經 · 和合本生僻字標音版</title>
     <script type="module" crossorigin src="./assets/index-anchor-stability.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-GokbOFnL.css">
+    <style>
+      /* 手机端：扩大书页显示面积 + 全屏阅读 + 隐藏左右翻页按钮（滑动/点按翻页仍可用） */
+      @media (max-width: 759px) {
+        .reader-stage { padding: 0; }
+        .reader-book-shell,
+        .reader-book-shell.single { width: 100%; }
+        .reader-book-shell.single .book-spread { width: 100%; }
+        .paper-page { height: calc(100vh - 58px); padding: 18px 20px 30px; }
+        .page-side-control { display: none; }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
