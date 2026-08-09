@@ -42,8 +42,8 @@
     <div id="devotion-link" role="link" tabindex="0" aria-label="打开每日灵修">每日靈修 📖</div>
     <script>
     (function () {
-      var KEY = 'bible-reader-fs-v1';
-      var MIN = 13, MAX = 24;
+      var KEY = 'bible-reader-fs-v2'; // v2：默认字号提升为原一倍（16→32），旧 v1 值失效
+      var MIN = 24, MAX = 44;
       function apply(size) {
         document.documentElement.style.setProperty('--reader-fs', size + 'px');
         try { localStorage.setItem(KEY, String(size)); } catch (e) {}
@@ -56,8 +56,8 @@
         var header = document.querySelector('.reader-header');
         var spacer = header && header.querySelector('.header-spacer');
         if (!spacer || !header) return false;
-        var size = parseInt(localStorage.getItem(KEY) || '16', 10);
-        if (isNaN(size)) size = 16;
+        var size = parseInt(localStorage.getItem(KEY) || '32', 10);
+        if (isNaN(size)) size = 32;
         size = Math.max(MIN, Math.min(MAX, size));
         var ctrl = document.createElement('div');
         ctrl.id = 'fs-ctrl';
@@ -65,7 +65,7 @@
         ctrl.addEventListener('click', function (e) {
           var btn = e.target.closest('button');
           if (!btn) return;
-          var cur = parseInt(localStorage.getItem(KEY) || '16', 10);
+          var cur = parseInt(localStorage.getItem(KEY) || '32', 10);
           cur = Math.max(MIN, Math.min(MAX, cur + parseInt(btn.dataset.d, 10)));
           ctrl.querySelector('#fs-val').textContent = cur;
           apply(cur);
