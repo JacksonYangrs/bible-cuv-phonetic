@@ -21,11 +21,23 @@
       #fs-ctrl button { min-width: 26px; height: 28px; padding: 0 4px; border: 1px solid #f4e1c047; border-radius: 7px; color: #f8ead4; background: #ffffff14; font: 700 13px 'Noto Serif CJK TC', serif; cursor: pointer; }
       #fs-ctrl button:hover { background: #e1b8773d; }
       #fs-ctrl span { display: grid; min-width: 30px; height: 28px; place-items: center; color: #e9d7b8; font: 600 12px/1 'Noto Serif CJK TC', serif; }
+      /* 可拖动的每日灵修悬浮链接：半透明，不遮挡正文 */
+      #devotion-link {
+        position: fixed; left: 16px; bottom: 16px; z-index: 1000;
+        display: inline-flex; align-items: center; gap: 5px;
+        padding: 8px 12px; border: 1px solid rgba(244, 225, 192, .28);
+        border-radius: 10px; color: #f4e7d0; cursor: grab;
+        background: rgba(20, 12, 4, .45); backdrop-filter: blur(6px);
+        font: 600 13px 'Noto Serif CJK TC', 'Songti TC', serif; letter-spacing: .04em;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, .25); user-select: none;
+        -webkit-user-select: none; touch-action: none;
+      }
+      #devotion-link:active { cursor: grabbing; background: rgba(40, 25, 10, .6); }
     </style>
   </head>
   <body>
     <div id="root"></div>
-    <a href="https://jacksonyangrs.github.io/rehoboth-church-site/" style="position:fixed;bottom:16px;left:16px;z-index:1000;display:inline-flex;align-items:center;gap:5px;color:#f8ead4;text-decoration:none;background:#a4662f5c;border:1px solid #f4e1c047;border-radius:9px;padding:7px 11px;font:600 13px 'Noto Serif CJK TC','Songti TC',serif;letter-spacing:.05em;backdrop-filter:blur(4px)">利河伯教會 ⛪</a>
+    <div id="devotion-link" role="link" tabindex="0" aria-label="打开每日灵修">每日靈修 📖</div>
     <script>
     (function () {
       var KEY = 'bible-reader-fs-v1';
@@ -67,6 +79,60 @@
       } else {
         if (!mount()) new MutationObserver(function () { if (mount()) this.disconnect(); }).observe(document.body, { childList: true, subtree: true });
       }
+    })();
+    (function () {
+      // 可拖动的「每日灵修」悬浮链接：按住拖动，松手判定为点击则跳转；位置持久化到 localStorage。
+      var el = document.getElementById('devotion-link');
+      var TARGET = 'https://jacksonyangrs.github.io/rehoboth-church-site/devotion/';
+      var KEY = 'bible-devotion-link-pos-v1';
+      var MOVE_THRESHOLD = 8; // px，超过视为拖动而非点击
+      var startX = 0, startY = 0, startLeft = 0, startTop = 0, moved = false;
+
+      try {
+        var saved = JSON.parse(localStorage.getItem(KEY) || 'null');
+        if (saved && typeof saved.left === 'number') {
+          el.style.left = saved.left + 'px';
+          el.style.top = saved.top + 'px';
+          el.style.bottom = 'auto';
+          el.style.right = 'auto';
+        }
+      } catch (e) {}
+
+      function savePos() {
+        try {
+          localStorage.setItem(KEY, JSON.stringify({ left: parseInt(el.style.left, 10), top: parseInt(el.style.top, 10) }));
+        } catch (e) {}
+      }
+
+      el.addEventListener('pointerdown', function (e) {
+        moved = false;
+        startX = e.clientX; startY = e.clientY;
+        startLeft = el.getBoundingClientRect().left;
+        startTop = el.getBoundingClientRect().top;
+        el.setPointerCapture(e.pointerId);
+      });
+      el.addEventListener('pointermove', function (e) {
+        if (!el.hasPointerCapture(e.pointerId)) return;
+        var dx = e.clientX - startX, dy = e.clientY - startY;
+        if (Math.abs(dx) > MOVE_THRESHOLD || Math.abs(dy) > MOVE_THRESHOLD) moved = true;
+        var rect = el.getBoundingClientRect();
+        var left = Math.min(Math.max(0, startLeft + dx), window.innerWidth - rect.width);
+        var top = Math.min(Math.max(0, startTop + dy), window.innerHeight - rect.height);
+        el.style.left = left + 'px';
+        el.style.top = top + 'px';
+        el.style.bottom = 'auto';
+        el.style.right = 'auto';
+      });
+      el.addEventListener('pointerup', function () {
+        if (moved) savePos();
+      });
+      el.addEventListener('click', function (e) {
+        if (moved) { e.preventDefault(); e.stopPropagation(); moved = false; return; }
+        window.location.href = TARGET;
+      });
+      el.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') window.location.href = TARGET;
+      });
     })();
     </script>
   </body>
