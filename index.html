@@ -44,7 +44,7 @@
     <div id="devotion-link" role="link" tabindex="0" aria-label="打开每日灵修">每日靈修 📖</div>
     <script>
     (function () {
-      var KEY = 'bible-reader-fs-v4'; // v4：默认字号 28px
+      var KEY = 'bible-reader-fs-v5'; // v5：默认字号 25px
       var MIN = 16, MAX = 36;
       function apply(size) {
         document.documentElement.style.setProperty('--reader-fs', size + 'px');
@@ -58,8 +58,8 @@
         var header = document.querySelector('.reader-header');
         var spacer = header && header.querySelector('.header-spacer');
         if (!spacer || !header) return false;
-        var size = parseInt(localStorage.getItem(KEY) || '28', 10);
-        if (isNaN(size)) size = 28;
+        var size = parseInt(localStorage.getItem(KEY) || '25', 10);
+        if (isNaN(size)) size = 25;
         size = Math.max(MIN, Math.min(MAX, size));
         var ctrl = document.createElement('div');
         ctrl.id = 'fs-ctrl';
@@ -67,7 +67,7 @@
         ctrl.addEventListener('click', function (e) {
           var btn = e.target.closest('button');
           if (!btn) return;
-          var cur = parseInt(localStorage.getItem(KEY) || '28', 10);
+          var cur = parseInt(localStorage.getItem(KEY) || '25', 10);
           cur = Math.max(MIN, Math.min(MAX, cur + parseInt(btn.dataset.d, 10)));
           ctrl.querySelector('#fs-val').textContent = cur;
           apply(cur);
