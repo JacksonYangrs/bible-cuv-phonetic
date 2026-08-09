@@ -33,6 +33,8 @@
         -webkit-user-select: none; touch-action: none;
       }
       #devotion-link:active { cursor: grabbing; background: rgba(40, 25, 10, .6); }
+      /* 金句定位高亮 */
+      .verse-target { background: rgba(233, 200, 120, .3) !important; border-radius: 5px; box-shadow: inset 0 0 0 1.5px rgba(182, 135, 60, .55); }
     </style>
   </head>
   <body>
@@ -157,18 +159,29 @@
         if (idx < 0) return null;
         var bookName = ref.indexOf(BOOKS[names[idx]]) === 0 ? BOOKS[names[idx]] : names[idx];
         var rest = ref.slice(bookName.length);
-        var m = rest.match(/([一二三四五六七八九十廿卅]+)章/);
-        if (!m) return null;
-        var chapter = cnToNum(m[1]);
+        var ch = rest.match(/([一二三四五六七八九十廿卅]+)章/);
+        if (!ch) return null;
+        var chapter = cnToNum(ch[1]);
         if (!chapter) return null;
-        return { book: idx, chapter: chapter - 1 };
+        // 节号（可选）：取"X节"或"X至Y节"中的起始节
+        var vs = rest.match(/([一二三四五六七八九十廿卅]+)(?:至[一二三四五六七八九十廿卅]+)?节/);
+        var verse = vs ? cnToNum(vs[1]) : 0;
+        return { book: idx, chapter: chapter - 1, verse: verse > 0 ? verse - 1 : 0 };
+      }
+      function findVerse(v) {
+        var verses = document.querySelectorAll('.paper-page .verse');
+        for (var i = 0; i < verses.length; i++) {
+          var sup = verses[i].querySelector('sup');
+          if (sup && parseInt(sup.textContent, 10) === v + 1) return verses[i];
+        }
+        return null;
       }
       function jump(target) {
         if (!target) return;
-        var step = 0, tries = 0;
+        var step = 0, tries = 0, searchTries = 0;
         var timer = setInterval(function () {
           tries++;
-          if (tries > 120) { clearInterval(timer); return; }
+          if (tries > 150) { clearInterval(timer); return; }
           if (step === 0) {
             var bookBtns = document.querySelectorAll('.toc-book-button');
             if (bookBtns.length === 0) {
@@ -185,10 +198,24 @@
             if (btns.length > target.chapter) {
               btns[target.chapter].click();
               step = 2;
-              clearInterval(timer);
+              searchTries = 0;
             } else { clearInterval(timer); }
+          } else if (step === 2) {
+            // 在当前页找目标节；找不到则翻下一页（最多 80 页）
+            var found = findVerse(target.verse);
+            if (found) {
+              found.classList.add('verse-target');
+              try { found.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { found.scrollIntoView(); }
+              clearInterval(timer);
+              return;
+            }
+            searchTries++;
+            if (searchTries > 80) { clearInterval(timer); return; }
+            var nextBtn = document.querySelector('.page-side-control.next-page-control');
+            if (nextBtn) nextBtn.click();
+            else clearInterval(timer);
           }
-        }, 200);
+        }, 250);
       }
       function start() { jump(parseRef()); }
       if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
