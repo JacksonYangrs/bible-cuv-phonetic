@@ -35,6 +35,8 @@
       #devotion-link:active { cursor: grabbing; background: rgba(40, 25, 10, .6); }
       /* 金句定位高亮 */
       .verse-target { background: rgba(233, 200, 120, .3) !important; border-radius: 5px; box-shadow: inset 0 0 0 1.5px rgba(182, 135, 60, .55); }
+      /* 正文跟随字号调节：覆盖 bundle 中 .verse 的固定 font-size */
+      .verse { font-size: var(--reader-fs) !important; line-height: 2.0; }
     </style>
   </head>
   <body>
